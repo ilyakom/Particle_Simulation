@@ -23,15 +23,24 @@ namespace Diploma
         {
             InitializeComponent();
             graph1d.InitializeContexts();
+            rnd = new Random();
+          
         }
-        Random rnd;
+        Random rnd;       
+        SystemModel model = SystemModel.getInstance();
+
         //число разбиений отрезка, число частиц
-        int NumOfDivs, NumOfParticles, Averaging, steps = 0;
+        int numOfDivs, Averaging = 1, steps = 1;
         //длина разбиения
         double LengthOfDiv, TimeStep, ParticleMass = 0.04f, SpendedTime;
         //массив частиц, содержащий Х координату частицы
-        List<double> Particles;
-        double[] HeightLines, TmpParticles;
+        List<double> Particles, TmpParticles;
+        double[] HeightLines, tmpHeightLines, originalParticles;
+
+        //метод прогонки
+        double[] alfa, beta, sweepSolution;
+        int sweepDemention;
+        double sweepStep;
 
         // размеры окна 
         double ScreenW, ScreenH, HalfScreenW, HalfScreenH;        
@@ -52,6 +61,17 @@ namespace Diploma
         //длинна локализации
         double Localize = 2 * Math.PI * Math.Sqrt(2 * 10);
         float Colapse = 1;
+        double windowWidth = 0.3;
+
+        private double density(double param)
+        {
+            double sum = 0;
+            for (int i = 0; i < Particles.Count; i++)
+            {
+                sum += Math.Sqrt(1 / (2 * Math.PI)) * Math.Exp(-Math.Pow((param - Particles[i]) / LengthOfDiv, 2) / 2);
+            }
+            return sum / (Particles.Count * LengthOfDiv);
+        }
 
         private double func(double param)
         {
@@ -60,26 +80,26 @@ namespace Diploma
         }
 
         private double Sigma(double param)
-        {
-
+        {         
             return Math.Sqrt(param);
         }
 
         private double soluttion(double x, double t)
-        {
-           // return t * Math.Sin(x * Math.PI / (ScreenW - 1));
-            if (Math.Abs(x) <= Localize / 2)
-            {
-                return (4 * Math.Pow(Math.Cos(Math.PI * x / Localize), 2)) / (3 * (Colapse - t));
-            }
+        {        
+            //if (Math.Abs(x) <= Localize / 2)
+            //{
+            //    return (4 * Math.Pow(Math.Cos(Math.PI * x / Localize), 2)) / (3 * (Colapse - t));
+            //}
+            //else
+            //    return 0;
+
+            if (x > -10 && x <= 0)
+                return 10 + x;
+            else if (x > 0 && x < 10)
+                return 10 - x;
             else
                 return 0;
-        }
-
-        private void differenceScheme()
-        {
-
-        }
+        }        
 
         private void StartForm_Load(object sender, EventArgs e)
         {
@@ -112,6 +132,9 @@ namespace Diploma
             }
             HalfScreenH = ScreenH / 2;
             HalfScreenW = ScreenW / 2;
+            model.xOffset = HalfScreenW;
+            model.yOffset = 1;            
+
             Glu.gluOrtho2D(0.0, ScreenW, 0.0, ScreenH);
             // сохранение коэфицентов, которые нам необходимы для перевода координат указателя в оконной системе, в координаты 
             // принятые в нашей OpenGL сцене 
@@ -119,59 +142,202 @@ namespace Diploma
             devY = (float)ScreenH / (float)graph1d.Height;
 
             // установка объектно-видовой матрицы 
-            Gl.glMatrixMode(Gl.GL_MODELVIEW);
+            Gl.glMatrixMode(Gl.GL_MODELVIEW);  
+        }
 
-            // старт щетчика, отвечающего за выхов функции визуализации сцены 
-            DrawTimer.Start();
+        private double A (int i)
+        {
+            if (i == 0)
+                return 0;
+            else
+                return (sweepSolution[i - 1] + sweepSolution[i]) / 2;
+        }
+
+        private double B(int i)
+        {
+            if (i == sweepDemention - 1)
+                return 0;
+            else
+                return (sweepSolution[i] + sweepSolution[i + 1]) / 2;
+        }
+
+        private double C(int i)
+        {
+
+            if (i == sweepDemention - 1)
+                return 1;
+            else
+                return A(i) + B(i) + sweepStep * sweepStep / TimeStep;
+        }
+
+        private double F(int i)
+        {
+            return sweepStep * sweepStep * sweepSolution[i] / TimeStep;
+        }
+
+        private void differenceScheme()
+        {
+            for (int i = 0; i < sweepDemention - 1; i++)
+            {
+               
+                alfa[i + 1] =  B(i) / (C(i) - A(i) * alfa[i]);
+                beta[i + 1] = (F(i) + A(i) * beta[i]) / (C(i) - A(i) * alfa[i]);
+            }
+
+            sweepSolution[sweepDemention - 1] = (F(sweepDemention - 1) + A(sweepDemention - 1) * beta[sweepDemention - 1]) / (C(sweepDemention - 1) - A(sweepDemention - 1) * alfa[sweepDemention - 1]);
+
+            for (int i = sweepDemention - 2; i >= 0; i--)
+            {
+                sweepSolution[i] = alfa[i + 1] * sweepSolution[i + 1] + beta[i + 1];
+            }
         }
 
         private void initialization()
-        {
-            NumOfParticles = 0;
-            rnd = new Random();            
-            LengthOfDiv = (ScreenW - 1.0f) / NumOfDivs;
+        {          
+                        
+            LengthOfDiv = ScreenW / numOfDivs;
             Particles = new List<double>();
-            HeightLines = new double[NumOfDivs];
+            HeightLines = new double[numOfDivs];
+            tmpHeightLines = new double[numOfDivs];
+            TmpParticles = new List<double>();
+            alfa = new double[sweepDemention];
+            beta = new double[sweepDemention];
+            sweepSolution = new double[sweepDemention];;
 
-            //double offset = 0.5f * (ScreenW - 1);
-            //double StartLeight = 0.1f * (ScreenW - 1);
-            //for (int i = 0; i < NumOfParticles; i++)
-            //{
-            //    RandomNum1 = rnd.NextDouble();
-            //    RandomNum2 = rnd.NextDouble();
-            //    while (RandomNum1 == 0)
-            //        RandomNum1 = rnd.NextDouble();
-            //    while (RandomNum2 == 0)
-            //        RandomNum2 = rnd.NextDouble();               
-            //    Particles.Add(offset + StartLeight * Math.Cos(2 * Math.PI * RandomNum1) * Math.Sqrt(-2 * Math.Log(RandomNum2)));
-            //    HeightLines[(int)(Particles[i] / LengthOfDiv)] += ParticleMass;
-            //}
-
-            int NumofParticlesInCell;
-            Random PosInCell = new Random();
-            for (int i = 0; i < NumOfDivs; i++)
+            for (int i = 1; i < sweepDemention - 1; i++)
             {
-                NumofParticlesInCell = (int)(soluttion((i - (int)(NumOfDivs / 2) + 0.5) * LengthOfDiv, 0) / ParticleMass);
-
-                for (int k = 0; k < NumofParticlesInCell; k++)
-                    Particles.Add(LengthOfDiv * (i + (float)PosInCell.NextDouble()));
-                HeightLines[i] += ParticleMass * NumofParticlesInCell;
-                NumOfParticles += NumofParticlesInCell;
+                sweepSolution[i] = soluttion(i * sweepStep - model.xOffset, 0);
             }
-            textBox2.Text = NumOfParticles.ToString();
-            TimeStep = 1f / (float)(NumOfParticles);
+
+            int numofParticlesInCell;
+            Random PosInCell = new Random();
+            for (int i = 0; i < numOfDivs; i++)
+            {
+                numofParticlesInCell = (int)(soluttion((i + 0.5) * LengthOfDiv - model.xOffset, 0) / ParticleMass);              
+                for (int k = 0; k < numofParticlesInCell; k++)
+                    Particles.Add(LengthOfDiv * (i + (float)PosInCell.NextDouble()) - model.xOffset);
+                HeightLines[i] += ParticleMass * numofParticlesInCell;               
+            }
+            textBox2.Text = Particles.Count.ToString();
+            TimeStep = 1f / (float)Math.Sqrt(Particles.Count);
             textBox3.Text = TimeStep.ToString();
-            Initialized = true;
+            Initialized = true;            
         }
 
         private void simulation()
         {
+            double RandomNum1, RandomNum2;   
             steps++;
-            particlesAdd();
-            double RandomNum1, RandomNum2;            
-            TmpParticles = new double[Particles.Count];                         
-            for (int j = 0; j < Averaging; j++)
-            {                
+            Console.WriteLine("Step №" + steps.ToString());
+            differenceScheme();
+            if (everyStepAveraging.Checked)
+            {
+                //particlesAdd();
+                Array.Clear(tmpHeightLines, 0, tmpHeightLines.Length);
+                for (int j = 0; j < Averaging; j++)
+                {
+                    TmpParticles.Clear(); 
+                    for (int i = 0; i < Particles.Count; i++)
+                    {
+                        RandomNum1 = rnd.NextDouble();
+                        RandomNum2 = rnd.NextDouble();
+                        while (RandomNum1 == 0)
+                            RandomNum1 = rnd.NextDouble();
+                        while (RandomNum2 == 0)
+                            RandomNum2 = rnd.NextDouble();  
+                     
+                        TmpParticles.Add(Particles[i] + Math.Cos(2 * Math.PI * RandomNum1) * Math.Sqrt(-2 * Math.Log(RandomNum2) * TimeStep)
+                            * Sigma(HeightLines[(int)Math.Floor((Particles[i] + HalfScreenW) / LengthOfDiv)]));
+                    }
+
+                    for (int i = 0; i < TmpParticles.Count; i++)
+                    {                        
+                        if (TmpParticles[i] < HalfScreenW && TmpParticles[i] > -HalfScreenW)                        
+                            tmpHeightLines[(int)Math.Floor((TmpParticles[i] + HalfScreenW) / LengthOfDiv)] += ParticleMass;                        
+                    }
+                }
+
+                for (int i = 0; i < HeightLines.Length; i++)
+                {                   
+                        HeightLines[i] = tmpHeightLines[i] / Averaging;
+                }
+
+                Random PosInCell = new Random();
+                Particles.Clear();
+                for (int i = 0; i < numOfDivs; i++)
+                {
+                    int numofParticlesInCell = (int)(HeightLines[i] / ParticleMass);
+                    for (int k = 0; k < numofParticlesInCell; k++)
+                        Particles.Add(LengthOfDiv * (i + (float)PosInCell.NextDouble()) - model.xOffset);                   
+                }
+                //SpendedTime = TimeStep * (double)(steps);
+                //TimeStep = 1f / (float)Math.Sqrt(Particles.Count);
+                //steps = (int)(SpendedTime / TimeStep);
+                //textBox3.Text = TimeStep.ToString();
+            }
+            else if (wholeWayAveraging.Checked)
+            {
+                double[][] avs = new double[Averaging][];
+                for (int j = 0; j < Averaging; j++)
+                {
+                    avs[j] = new double[Particles.Count];
+                    for (int k = 0; k < Particles.Count; k++)
+                    {
+                        avs[j][k] = originalParticles[k];
+                    }
+                    
+                    for (int k = 0; k < steps; k++)
+                    {
+                        for (int i = 0; i < Particles.Count; i++)
+                        {
+                            RandomNum1 = rnd.NextDouble();
+                            RandomNum2 = rnd.NextDouble();
+                            while (RandomNum1 == 0)
+                                RandomNum1 = rnd.NextDouble();
+                            while (RandomNum2 == 0)
+                                RandomNum2 = rnd.NextDouble();
+                            if (avs[j][i] < HalfScreenW && avs[j][i] > -HalfScreenW)
+                                avs[j][i] += Math.Cos(2 * Math.PI * RandomNum1) * Math.Sqrt(-2 * Math.Log(RandomNum2) * TimeStep)
+                                    * Sigma(HeightLines[(int)Math.Floor((avs[j][i] + HalfScreenW) / LengthOfDiv)]);
+                            
+                        }
+                        
+
+                        Array.Clear(HeightLines, 0, HeightLines.Length);
+                        for (int i = 0; i < Particles.Count; i++)                        
+                            if (avs[j][i] < HalfScreenW && avs[j][i] > -HalfScreenW)
+                                HeightLines[(int)Math.Floor((avs[j][i] + HalfScreenW) / LengthOfDiv)] += ParticleMass;                                            
+                    }                   
+                }
+
+                Array.Clear(HeightLines, 0, HeightLines.Length);
+                for (int i = 0; i < Particles.Count; i++)
+                {
+                    Particles[i] = 0;
+                    for (int j = 0; j < Averaging; j++)
+                        Particles[i] += avs[j][i];
+                    Particles[i] /= Averaging;
+
+                    if (Particles[i] > HalfScreenW || Particles[i] < -HalfScreenW)
+                    {
+                        Particles.RemoveAt(i);                        
+                        i--;                         
+                    }
+                    else
+                    {
+                        HeightLines[(int)Math.Floor((Particles[i]) / LengthOfDiv) + (int)Math.Ceiling(HeightLines.Length / 2f)] += ParticleMass;
+                    }
+                }
+                Console.WriteLine(Particles.Min().ToString() + " and " + Particles.Max().ToString());
+                //SpendedTime = TimeStep * (double)(steps);
+                //TimeStep = 1f / (float)(NumOfParticles);
+                //steps = (int)(SpendedTime / TimeStep);
+                //textBox3.Text = TimeStep.ToString();              
+            }
+            else if (parzenMethod.Checked)
+            {
+                //particlesAdd();
+                TmpParticles = new List<double>();
                 for (int i = 0; i < Particles.Count; i++)
                 {
                     RandomNum1 = rnd.NextDouble();
@@ -180,63 +346,57 @@ namespace Diploma
                         RandomNum1 = rnd.NextDouble();
                     while (RandomNum2 == 0)
                         RandomNum2 = rnd.NextDouble();
-                    TmpParticles[i] += Math.Cos(2 * Math.PI * RandomNum1) * Math.Sqrt(-2 * Math.Log(RandomNum2) * TimeStep) 
-                        * Sigma(HeightLines[(int)((Particles[i])/ LengthOfDiv)]);                                              
-                }
-            }
-
-            Array.Clear(HeightLines, 0, HeightLines.Length);
-            for (int i = 0; i < Particles.Count; i++)
-            {
-                Particles[i] += TmpParticles[i] / Averaging;
-                if (Particles[i] > ScreenW - 1 || Particles[i] < 1)
+                    TmpParticles.Add(Math.Cos(2 * Math.PI * RandomNum1) * Math.Sqrt(-2 * Math.Log(RandomNum2) * TimeStep)
+                        * Sigma(density(Particles[i]) * Particles.Count * ParticleMass));
+                }                            
+                Array.Clear(HeightLines, 0, HeightLines.Length);
+                for (int i = 0; i < Particles.Count; i++)
                 {
-                    Particles.RemoveAt(i);
-                    i--;
-                    continue;
-                }
-                else
-                {
-                    HeightLines[(int)((Particles[i]) / LengthOfDiv)] += ParticleMass;
-                }
+                    Particles[i] += TmpParticles[i];
+                    if (Particles[i] > HalfScreenW || Particles[i] < -HalfScreenW)
+                    {
+                        Particles.RemoveAt(i);
+                        TmpParticles.RemoveAt(i);
+                        i--;
+                        continue;
+                    }
+                    else
+                    {
+                        HeightLines[(int)Math.Floor((Particles[i]) / LengthOfDiv) + (int)Math.Ceiling(HeightLines.Length / 2f)] = density(Particles[i]) * Particles.Count * ParticleMass;
+                    }
+                }               
+                Console.WriteLine(Particles.Count);
             }
-
-            SpendedTime = TimeStep * (double)(steps);
-            TimeStep = 1f / Math.Sqrt(NumOfParticles);
-            steps = (int)(SpendedTime / TimeStep);
-            textBox3.Text = TimeStep.ToString();
         }
 
         private void particlesAdd()
         {
             int NumofParticlesInCell;
             Random PosInCell = new Random();
-            for (int i = 0; i < NumOfDivs; i++)                                                
+            for (int i = 0; i < numOfDivs; i++)                                                
             {
                 NumofParticlesInCell = (int)(TimeStep * func(HeightLines[i]) / ParticleMass);
                 
                 for (int k = 0; k < NumofParticlesInCell; k++)
-                    Particles.Add(LengthOfDiv * (i + (float)PosInCell.NextDouble()));
-                NumOfParticles += NumofParticlesInCell;                
+                    Particles.Add(LengthOfDiv * (i + (float)PosInCell.NextDouble()));                               
             }                
         }
 
         private void button1_Click(object sender, EventArgs e)
         {
+            originalParticles = new double[Particles.Count];
+            Particles.CopyTo(originalParticles);
+
             simulateTimer.Start();
             textBox2.Enabled = false;
-        }
-
-        private void PointInGrap_Tick(object sender, EventArgs e)
-        {            
-            // функция визуализации 
-            Draw();           
+            button1.Enabled = false;
         }
 
         private void simulateTimer_Tick(object sender, EventArgs e)
-        {            
+        {
+            Draw();
             simulation();
-            textBox2.Text = NumOfParticles.ToString();
+            textBox2.Text = Particles.Count.ToString();
         }
 
         private void graph1d_MouseMove(object sender, MouseEventArgs e)
@@ -275,8 +435,8 @@ namespace Diploma
             for (int ax = 0; ax < HeightLines.Length; ax += 1)
             {
                 // передаем в OpenGL информацию о вершине, участвующей в построении линий 
-                Gl.glVertex2d(ax * LengthOfDiv, HeightLines[ax]);
-                Gl.glVertex2d((ax + 1) * LengthOfDiv, HeightLines[ax]);
+                Gl.glVertex2d(ax * LengthOfDiv - model.xOffset, HeightLines[ax]);
+                Gl.glVertex2d((ax + 1) * LengthOfDiv - model.xOffset, HeightLines[ax]);
             }
             
             Gl.glEnd();                                    
@@ -285,19 +445,50 @@ namespace Diploma
         private void DrawSolution()
         {
             double SollutionDrawStep = 0.5;
-            int ax = (int)(-HalfScreenW);
+            int ax = (int)0;
 
             Gl.glBegin(Gl.GL_LINE_STRIP);
-
-            while (ax * SollutionDrawStep < ScreenW - 1)
+            while (ax * SollutionDrawStep < ScreenW)
             {
                 // передаем в OpenGL информацию о вершине, участвующей в построении линий 
-                Gl.glVertex2d(ax * SollutionDrawStep + HalfScreenW, soluttion(ax * SollutionDrawStep, TimeStep * steps));
-                Gl.glVertex2d((ax + 1) * SollutionDrawStep + HalfScreenW, soluttion((ax + 1) * SollutionDrawStep, TimeStep * steps));
+                Gl.glVertex2d(ax * SollutionDrawStep - model.xOffset, 
+                    soluttion(ax * SollutionDrawStep - model.xOffset, TimeStep * steps));
+                Gl.glVertex2d((ax + 1) * SollutionDrawStep - model.xOffset, 
+                    soluttion((ax + 1) * SollutionDrawStep - model.xOffset, TimeStep * steps));
                 ax ++;
             }
 
             Gl.glEnd();
+        }
+
+        private void DrawDensity()
+        {
+            int ax = 0;
+            Gl.glColor3f(0, 0, 1);
+            Gl.glBegin(Gl.GL_LINE_STRIP);
+            while (ax * 0.5 < ScreenW)
+            {
+                Gl.glVertex2d(ax * 0.5 - model.xOffset, density(ax * 0.5 - model.xOffset) * Particles.Count * ParticleMass);
+                Gl.glVertex2d((ax + 1) * 0.5 - model.xOffset, density((ax + 1) * 0.5 - model.xOffset) * Particles.Count * ParticleMass);
+                ax++;
+            }
+            Gl.glEnd();
+            Gl.glColor3f(0, 0, 0);
+        }
+
+        private void DrawDifferenceScheme()
+        {
+            int ax = 0;
+            Gl.glColor3f(0, 1, 0);
+            Gl.glBegin(Gl.GL_LINE_STRIP);
+            while (ax < sweepDemention - 1)
+            {
+                Gl.glVertex2d(ax * sweepStep - model.xOffset, sweepSolution[ax]);
+                Gl.glVertex2d((ax + 1) * sweepStep - model.xOffset, sweepSolution[ax + 1]);
+                ax++;
+            }
+            Gl.glEnd();
+            Gl.glColor3f(0, 0, 0);
         }
 
         // функция, управляющая визуализацией сцены 
@@ -316,13 +507,13 @@ namespace Diploma
             Gl.glPushMatrix();
 
             // выполняем перемещение в прострастве по осям X и Y 
-            Gl.glTranslated(1, 1, 0);
+            Gl.glTranslated(model.xOffset, model.yOffset, 0);
 
             // активируем рижим рисования (Указанные далее точки будут выводиться как точки GL_POINTS) 
             Gl.glBegin(Gl.GL_POINTS);
 
             // с помощью прохода вдумя циклами, создаем сетку из точек 
-            for (int ax = 0; ax < (int)ScreenW; ax++)
+            for (int ax = -(int)model.xOffset; ax < (int)model.xOffset + 1; ax++)
             {
                 for (int bx = 0; bx < (int)ScreenH; bx++)
                 {
@@ -340,43 +531,46 @@ namespace Diploma
             Gl.glBegin(Gl.GL_LINES);
 
             // далее мы рисуем координатные оси и стрекли на их концах 
-            Gl.glVertex2d(0, -1);
+            Gl.glVertex2d(0, -model.yOffset);
             Gl.glVertex2d(0, ScreenH);
 
-            Gl.glVertex2d(-1, 0);
-            Gl.glVertex2d(ScreenW, 0);
+            Gl.glVertex2d(-model.xOffset, 0);
+            Gl.glVertex2d(model.xOffset, 0);
 
             // вертикальная стрелка 
-            Gl.glVertex2d(0, ScreenH - 1);
-            Gl.glVertex2d(0.5, ScreenH - 1.5);
-            Gl.glVertex2d(0, ScreenH - 1);
-            Gl.glVertex2d(-0.5, ScreenH - 1.5);
+            Gl.glVertex2d(0, ScreenH - model.yOffset);
+            Gl.glVertex2d(0.5, ScreenH - 0.5 - model.yOffset);
+            Gl.glVertex2d(0, ScreenH - model.yOffset);
+            Gl.glVertex2d(-0.5, ScreenH - 0.5 - model.yOffset);
 
             // горизонтальная трелка 
-            Gl.glVertex2d(ScreenW - 1, 0);
-            Gl.glVertex2d(ScreenW - 1.5, 0.5);
-            Gl.glVertex2d(ScreenW - 1, 0);
-            Gl.glVertex2d(ScreenW -1.5, -0.5);
+            Gl.glVertex2d(model.xOffset, 0);
+            Gl.glVertex2d(model.xOffset - 0.5, 0.5);
+            Gl.glVertex2d(model.xOffset, 0);
+            Gl.glVertex2d(model.xOffset - 0.5, -0.5);
 
             // завершаем режим рисования 
             Gl.glEnd();
 
             // выводим подписи осей "x" и "y" 
-            PrintText2D((float)ScreenW - 1.5f, 1f, "x");
-            PrintText2D(1f, (float)(ScreenH - 1.5), "y");
+            PrintText2D((float)(ScreenW - model.xOffset - 1.3f), -1f, "x");
+            PrintText2D(1f, (float)(ScreenH - 0.5 - model.yOffset), "y");
 
             if (Initialized)
             {
                 // вызываем функцию рисования графика 
                 DrawDiagram();
-                DrawSolution();
+                DrawDensity();
+                //DrawSolution();
+                DrawDifferenceScheme();
             }
 
             // возвращаем матрицу из стека 
             Gl.glPopMatrix();
 
             // выводим текст со значением координат возле курсора 
-            PrintText2D(devX * Mcoord_X + 0.2f, (float)ScreenH - devY * Mcoord_Y + 0.4f, "[ x: " + (devX * Mcoord_X - 1).ToString() + " ; y: " + ((float)ScreenH - devY * Mcoord_Y - 1).ToString() + "]");
+            PrintText2D(devX * Mcoord_X + 0.2f, (float)ScreenH - devY * Mcoord_Y + 0.4f,
+                "[ x: " + (devX * Mcoord_X - model.xOffset).ToString() + " ; y: " + ((float)ScreenH - devY * Mcoord_Y - model.yOffset).ToString() + "]");
 
             // устанавливаем красный цвет 
             Gl.glColor3f(255, 0, 0);
@@ -385,9 +579,9 @@ namespace Diploma
             // линии от курсора мыши к координатным осям 
             Gl.glBegin(Gl.GL_LINES);
 
-            Gl.glVertex2d(lineX, 1);
+            Gl.glVertex2d(lineX, model.yOffset);
             Gl.glVertex2d(lineX, lineY);
-            Gl.glVertex2d(1, lineY);
+            Gl.glVertex2d(model.xOffset, lineY);
             Gl.glVertex2d(lineX, lineY);
 
             Gl.glEnd();
@@ -405,8 +599,8 @@ namespace Diploma
             {
                 if (textBox1.Text != "")
                 {
-                    NumOfDivs = (int)Convert.ToInt32(textBox1.Text);
-                    if (NumOfDivs <= 0)
+                    numOfDivs = (int)Convert.ToInt32(textBox1.Text);
+                    if (numOfDivs <= 0)
                         throw (new FormatException());
                 }
             }
@@ -435,6 +629,7 @@ namespace Diploma
         {
             simulateTimer.Stop();
             textBox2.Enabled = true;
+            button1.Enabled = true;
         }
 
         private void textBox4_TextChanged(object sender, EventArgs e)
@@ -450,7 +645,7 @@ namespace Diploma
             }
             catch (FormatException)
             {
-                MessageBox.Show("Неверно введен шаг по времени!");
+                MessageBox.Show("Неверно введено колличество испытаний!");
                 textBox4.Text = "";
             }
             finally
@@ -466,6 +661,52 @@ namespace Diploma
                 }
             }
         }
+
+        private void textBox3_TextChanged(object sender, EventArgs e)
+        {
+            try
+            {
+                if (textBox3.Text != "")
+                {
+                    TimeStep = Convert.ToDouble(textBox3.Text);
+                    if (TimeStep <= 0)
+                        throw (new FormatException());
+                }
+            }
+            catch (FormatException)
+            {
+                MessageBox.Show("Неверно введен шажок по времени!");
+                textBox3.Text = "";
+            }            
+        }       
+
+        private void sweepDemention_TextChanged(object sender, EventArgs e)
+        {
+            try
+            {
+                if (sweepDementionTextBox.Text != "")
+                {
+                    sweepDemention = Convert.ToInt32(sweepDementionTextBox.Text);
+                }
+            }
+            catch (FormatException)
+            {
+                MessageBox.Show("Неверная размерность сетки для метода прогонки!");
+                sweepDementionTextBox.Text = "";
+            }
+            finally
+            {
+                if (sweepDementionTextBox.Text != "")
+                {
+                    sweepStep = ScreenW / sweepDemention;
+                    sweepStepTextBox.Text = sweepStep.ToString();
+                }
+                else
+                {
+                    sweepStepTextBox.Text = "";
+                }
+            }
+        }       
         
     }
 }
