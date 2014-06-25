@@ -16,13 +16,7 @@ using Tao.Platform.Windows;
 
 
 namespace Diploma
-{
-    public class Error
-    {
-        public double value { get; set;}
-        public int num { get; set;}
-    }
-
+{   
     public partial class StartForm : Form
     {
         public StartForm()
@@ -37,10 +31,10 @@ namespace Diploma
         //число разбиений отрезка, число частиц
         int numOfDivs, Averaging = 1, steps = 1;
         //длина разбиения
-        double LengthOfDiv, TimeStep, ParticleMass = 0.04f;
+        double LengthOfDiv, TimeStep, ParticleMass = 0.02f;
         //массив частиц, содержащий Х координату частицы
         List<double> Particles, TmpParticles;
-        double[] HeightLines, tmpHeightLines, originalParticles;
+        double[] HeightLines, tmpHeightLines;
 
         //метод прогонки
         double[] alfa, beta, sweepSolution;
@@ -83,6 +77,7 @@ namespace Diploma
         private double func(double param)
         {
             return 0;
+            return param;
             //return Math.Sin(Math.PI * x / (ScreenW - 1)) - Math.Pow(t * Math.PI / (ScreenW - 1), 2) * Math.Cos(2 * x * Math.PI / (ScreenW - 1));
         }
 
@@ -236,7 +231,8 @@ namespace Diploma
         private void simulation()
         {      
             double RandomNum1, RandomNum2;
-            double error = 0;            
+            double error = 0;
+            double missedParticleCoordinate = 0;
             steps++;
             Console.WriteLine("Step №" + steps.ToString());
             differenceScheme();
@@ -283,8 +279,7 @@ namespace Diploma
                 errorList.Clear();
                 for (int i = 0; i < numOfDivs; i++)
                 {
-                    int numofParticlesInCell = (int)Math.Floor(HeightLines[i] / ParticleMass);                 
-                    error += HeightLines[i] % ParticleMass;
+                    int numofParticlesInCell = (int)Math.Floor(HeightLines[i] / ParticleMass);                                    
                     if (HeightLines[i] % ParticleMass > 0)
                     {                       
                         errorList.Add(new Error() {value=HeightLines[i] % ParticleMass, num = i});                      
@@ -292,19 +287,29 @@ namespace Diploma
                     for (int k = 0; k < numofParticlesInCell; k++)
                         Particles.Add(LengthOfDiv * (i + (float)PosInCell.NextDouble()) - model.xOffset);                    
                 }
-                errorList.Sort(delegate(Error err1, Error err2)
+                                        
+                //Воостановление потерянных частиц, которые появляются в результате
+                //восстановления плотности после усреднения. Координата вычисляется как
+                //сумма координат столбиков гастограмм, на которых была обнаружена потеря,
+                //умноженная на величину потери(своеобразное весовое значение)
+                for (int i = 0; i < errorList.Count; i++)
                 {
-                    if (err1.value < err2.value)
-                        return 1;
-                    else if (err1.value == err2.value)
-                        return 0;
-                    else
-                        return -1;
-                });               
+                    error += errorList[i].value;
+                    missedParticleCoordinate += errorList[i].value * (LengthOfDiv * errorList[i].num - model.xOffset);
+                    if (error >= ParticleMass)
+                    {
+                        missedParticleCoordinate -= (error - ParticleMass) * (LengthOfDiv * errorList[i].num - model.xOffset);
+                        Particles.Add(missedParticleCoordinate);
+                        error -= ParticleMass;
+                        missedParticleCoordinate = 0;
+                    }
+                }
+
                 error = Math.Round(error, 2);
-                int particlesMissed = (int)(error / ParticleMass);
-                for (int i = 0; i < particlesMissed; i++)
-                    Particles.Add(LengthOfDiv * errorList[i].num - model.xOffset);            
+                if (error >= ParticleMass)
+                    Particles.Add(missedParticleCoordinate);
+
+                textBox2.Text = Particles.Count.ToString();
 
                 //SpendedTime = TimeStep * (double)(steps);
                 //TimeStep = 1f / (float)Math.Sqrt(Particles.Count);
@@ -313,26 +318,25 @@ namespace Diploma
             }
             else if (wholeWayAveraging.Checked)
             {
-                
-                List<double>[] avs = new List<double>[Averaging];
+                Array.Clear(HeightLines, 0, HeightLines.Length);                
                 for (int j = 0; j < Averaging; j++)
                 {
-                    avs[j] = new List<double>();
+                    TmpParticles.Clear();
                     for (int k = 0; k < Particles.Count; k++)
                     {
-                        avs[j].Add(originalParticles[k]);
+                        TmpParticles.Add(Particles[k]);
                     }
                    
                     for (int k = 0; k < steps; k++)
                     {
-                        particlesAdd(avs[j]);
+                        particlesAdd(TmpParticles);
 
-                        Array.Clear(HeightLines, 0, HeightLines.Length);
-                        for (int i = 0; i < avs[j].Count; i++)
-                            if (avs[j][i] < HalfScreenW && avs[j][i] > -HalfScreenW)
-                                HeightLines[(int)Math.Floor((avs[j][i] + HalfScreenW) / LengthOfDiv)] += ParticleMass;
+                        Array.Clear(tmpHeightLines, 0, tmpHeightLines.Length);
+                        for (int i = 0; i < TmpParticles.Count; i++)
+                            if (TmpParticles[i] < HalfScreenW && TmpParticles[i] > -HalfScreenW)
+                                tmpHeightLines[(int)Math.Floor((TmpParticles[i] + HalfScreenW) / LengthOfDiv)] += ParticleMass;
 
-                        for (int i = 0; i < avs[j].Count; i++)
+                        for (int i = 0; i < TmpParticles.Count; i++)
                         {
                             RandomNum1 = rnd.NextDouble();
                             RandomNum2 = rnd.NextDouble();
@@ -340,26 +344,21 @@ namespace Diploma
                                 RandomNum1 = rnd.NextDouble();
                             while (RandomNum2 == 0)
                                 RandomNum2 = rnd.NextDouble();
-                            if (avs[j][i] < HalfScreenW && avs[j][i] > -HalfScreenW)
-                                avs[j][i] += Math.Cos(2 * Math.PI * RandomNum1) * Math.Sqrt(-2 * Math.Log(RandomNum2) * TimeStep)
-                                    * Sigma(HeightLines[(int)Math.Floor((avs[j][i] + HalfScreenW) / LengthOfDiv)]);
-                            
+                            if (TmpParticles[i] < HalfScreenW && TmpParticles[i] > -HalfScreenW)
+                                TmpParticles[i] += Math.Cos(2 * Math.PI * RandomNum1) * Math.Sqrt(-2 * Math.Log(RandomNum2) * TimeStep)
+                                    * Sigma(tmpHeightLines[(int)Math.Floor((TmpParticles[i] + HalfScreenW) / LengthOfDiv)]);                            
                         }
-                        
-                        Array.Clear(HeightLines, 0, HeightLines.Length);
-                        for (int i = 0; i < avs[j].Count; i++)                        
-                            if (avs[j][i] < HalfScreenW && avs[j][i] > -HalfScreenW)
-                                HeightLines[(int)Math.Floor((avs[j][i] + HalfScreenW) / LengthOfDiv)] += ParticleMass;
-                                   
-                    }                   
-                }
 
-                Array.Clear(HeightLines, 0, HeightLines.Length);
-                for (int j = 0; j < Averaging; j++)
-                    for (int i = 0; i < avs[j].Count; i++)                                                
-                        if (avs[j][i] < HalfScreenW && avs[j][i] > -HalfScreenW)
-                            HeightLines[(int)Math.Floor((avs[j][i] + HalfScreenW) / LengthOfDiv)] += ParticleMass;
-                
+                        Array.Clear(tmpHeightLines, 0, tmpHeightLines.Length);
+                        for (int i = 0; i < TmpParticles.Count; i++)
+                            if (TmpParticles[i] < HalfScreenW && TmpParticles[i] > -HalfScreenW)
+                                tmpHeightLines[(int)Math.Floor((TmpParticles[i] + HalfScreenW) / LengthOfDiv)] += ParticleMass;                                   
+                    }
+                    textBox2.Text = TmpParticles.Count.ToString();
+                    for (int i = 0; i < HeightLines.Length; i++)
+                        HeightLines[i] += tmpHeightLines[i];
+                }
+                                                               
                 for (int j = 0; j < HeightLines.Length; j++)
                 {
                     HeightLines[j] /= Averaging;
@@ -401,7 +400,7 @@ namespace Diploma
                     HeightLines[i] = density((i + 0.5) * LengthOfDiv - HalfScreenW) * Particles.Count * ParticleMass;
                 }
                                             
-            }
+            }     
         }
 
         private void particlesAdd(List<double> arr = null)
@@ -419,7 +418,7 @@ namespace Diploma
             else
                 for (int i = 0; i < numOfDivs; i++)
                 {
-                    NumofParticlesInCell = (int)(TimeStep * func(HeightLines[i]) / ParticleMass);
+                    NumofParticlesInCell = (int)(TimeStep * func(tmpHeightLines[i]) / ParticleMass);
 
                     for (int k = 0; k < NumofParticlesInCell; k++)
                         arr.Add(LengthOfDiv * (i + (float)PosInCell.NextDouble()) - model.xOffset);
@@ -427,20 +426,15 @@ namespace Diploma
         }
 
         private void button1_Click(object sender, EventArgs e)
-        {
-            originalParticles = new double[Particles.Count];
-            Particles.CopyTo(originalParticles);
-
-            simulateTimer.Start();
-            textBox2.Enabled = false;
+        {            
+            simulateTimer.Start();            
             button1.Enabled = false;
         }
 
         private void simulateTimer_Tick(object sender, EventArgs e)
         {
             Draw();
-            simulation();
-            textBox2.Text = Particles.Count.ToString();
+            simulation();           
         }
 
         private void graph1d_MouseMove(object sender, MouseEventArgs e)
@@ -672,8 +666,7 @@ namespace Diploma
 
         private void button2_Click(object sender, EventArgs e)
         {
-            simulateTimer.Stop();
-            textBox2.Enabled = true;
+            simulateTimer.Stop();           
             button1.Enabled = true;
         }
 
@@ -751,12 +744,12 @@ namespace Diploma
                     sweepStepTextBox.Text = "";
                 }
             }
-        }
+        }               
+    }
 
-        private void textBox2_TextChanged(object sender, EventArgs e)
-        {
-
-        }       
-        
+    public class Error
+    {
+        public double value { get; set; }
+        public int num { get; set; }
     }
 }
