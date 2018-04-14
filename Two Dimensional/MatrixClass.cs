@@ -1,11 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 
-namespace MatrixLib
+namespace GraphicsProject
 {
-    class MatrixClass
+	internal class MatrixClass
     {        
         
         public static double[][] OnNumber(double a, double[][] matrix)
@@ -132,8 +130,8 @@ namespace MatrixLib
         //Создание трехдиагональной матрицы
         public static double[][] ThreeDiagonal(int n, double a, double c, double d)
         {
-            double[][] result = Create(n, n);
-            for (int i = 0; i < n; i++)
+            var result = Create(n, n);
+            for (var i = 0; i < n; i++)
             {
                 result[i][i] = c;
                 if (i != n - 1)
@@ -148,9 +146,9 @@ namespace MatrixLib
         public static double[][] Duplicate(double[][] matrix)
         {
             // Предполагается, что матрица не нулевая
-            double[][] result = Create(matrix.Length, matrix[0].Length);
-            for (int i = 0; i < matrix.Length; ++i) // Копирование значений
-                for (int j = 0; j < matrix[i].Length; ++j)
+            var result = Create(matrix.Length, matrix[0].Length);
+            for (var i = 0; i < matrix.Length; ++i) // Копирование значений
+                for (var j = 0; j < matrix[i].Length; ++j)
                     result[i][j] = matrix[i][j];
             return result;
         }
@@ -159,63 +157,61 @@ namespace MatrixLib
         {
             // Разложение LUP Дулитла. Предполагается,
             // что матрица квадратная.
-            int n = matrix.Length; // для удобства
-            double[][] result = Duplicate(matrix);
+            var n = matrix.Length; // для удобства
+            var result = Duplicate(matrix);
             perm = new int[n];
-            for (int i = 0; i < n; ++i) { perm[i] = i; }
+            for (var i = 0; i < n; ++i) { perm[i] = i; }
             toggle = 1;
-            for (int j = 0; j < n - 1; ++j) // каждый столбец
+            for (var j = 0; j < n - 1; ++j) // каждый столбец
             {
-                double colMax = Math.Abs(result[j][j]); // Наибольшее значение в столбце j
-                int pRow = j;
-                for (int i = j + 1; i < n; ++i)
+                var colMax = Math.Abs(result[j][j]); // Наибольшее значение в столбце j
+                var pRow = j;
+                for (var i = j + 1; i < n; ++i)
                 {
-                    if (result[i][j] > colMax)
-                    {
-                        colMax = result[i][j];
-                        pRow = i;
-                    }
+	                if (!(result[i][j] > colMax)) continue;
+	                colMax = result[i][j];
+	                pRow = i;
                 }
                 if (pRow != j) // перестановка строк
                 {
-                    double[] rowPtr = result[pRow];
+                    var rowPtr = result[pRow];
                     result[pRow] = result[j];
                     result[j] = rowPtr;
-                    int tmp = perm[pRow]; // Меняем информацию о перестановке
+                    var tmp = perm[pRow]; // Меняем информацию о перестановке
                     perm[pRow] = perm[j];
                     perm[j] = tmp;
                     toggle = -toggle; // переключатель перестановки строк
                 }
                 if (Math.Abs(result[j][j]) < 1.0E-20)
                     return null;
-                for (int i = j + 1; i < n; ++i)
+                for (var i = j + 1; i < n; ++i)
                 {
                     result[i][j] /= result[j][j];
-                    for (int k = j + 1; k < n; ++k)
+                    for (var k = j + 1; k < n; ++k)
                         result[i][k] -= result[i][j] * result[j][k];
                 }
             } // основной цикл по столбцу j
             return result;
         }
 
-        static double[] HelperSolve(double[][] luMatrix, double[] b)
+	    private static double[] HelperSolve(IReadOnlyList<double[]> luMatrix, double[] b)
         {
             // Решаем luMatrix * x = b
-            int n = luMatrix.Length;
-            double[] x = new double[n];
+            var n = luMatrix.Count;
+            var x = new double[n];
             b.CopyTo(x, 0);
-            for (int i = 1; i < n; ++i)
+            for (var i = 1; i < n; ++i)
             {
-                double sum = x[i];
-                for (int j = 0; j < i; ++j)
+                var sum = x[i];
+                for (var j = 0; j < i; ++j)
                     sum -= luMatrix[i][j] * x[j];
                 x[i] = sum;
             }
             x[n - 1] /= luMatrix[n - 1][n - 1];
-            for (int i = n - 2; i >= 0; --i)
+            for (var i = n - 2; i >= 0; --i)
             {
-                double sum = x[i];
-                for (int j = i + 1; j < n; ++j)
+                var sum = x[i];
+                for (var j = i + 1; j < n; ++j)
                     sum -= luMatrix[i][j] * x[j];
                 x[i] = sum / luMatrix[i][i];
             }
@@ -224,25 +220,23 @@ namespace MatrixLib
 
         public static double[][] Inverse(double[][] matrix)
         {
-            int n = matrix.Length;
-            double[][] result = Duplicate(matrix);
-            int[] perm;
-            int toggle;
-            double[][] lum = Decompose(matrix, out perm, out toggle);
+            var n = matrix.Length;
+            var result = Duplicate(matrix);
+	        var lum = Decompose(matrix, out var perm, out var toggle);
             if (lum == null)
                 throw new Exception("Unable to compute inverse");
-            double[] b = new double[n];
-            for (int i = 0; i < n; ++i)
+            var b = new double[n];
+            for (var i = 0; i < n; ++i)
             {
-                for (int j = 0; j < n; ++j)
+                for (var j = 0; j < n; ++j)
                 {
                     if (i == perm[j])
                         b[j] = 1.0;
                     else
                         b[j] = 0.0;
                 }
-                double[] x = HelperSolve(lum, b);
-                for (int j = 0; j < n; ++j)
+                var x = HelperSolve(lum, b);
+                for (var j = 0; j < n; ++j)
                     result[j][i] = x[j];
             }
             return result;

@@ -20,10 +20,8 @@ namespace Diploma.Visualization
 		public static void Init(SimpleOpenGlControl control)
 		{
 			_openGlControl = control ?? throw new ArgumentNullException(nameof(control));
-
-			// инициализация бибилиотеки glut 
+ 
 			Glut.glutInit();
-			// инициализация режима экрана 
 			Glut.glutInitDisplayMode(Glut.GLUT_RGB | Glut.GLUT_DOUBLE);
 
 			// установка цвета очистки экрана (RGBA) 
