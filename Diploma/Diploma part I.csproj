@@ -58,6 +58,12 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="NumericalMethods\MethodsCommon.cs" />
+    <Compile Include="NumericalMethods\ParticlesMethod\DensityRecoveryError.cs" />
+    <Compile Include="NumericalMethods\ParticlesMethod\ParticlesMethod.cs" />
+    <Compile Include="NumericalMethods\SweepMethod\SweepMethod.cs" />
+    <Compile Include="NumericalMethods\ParticlesMethod\Particle.cs" />
+    <Compile Include="NumericalMethods\ViewModel.cs" />
     <Compile Include="PM 1D.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -65,8 +71,10 @@
       <DependentUpon>PM 1D.cs</DependentUpon>
     </Compile>
     <Compile Include="Program.cs" />
+    <Compile Include="Properties\Annotations.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="SystemModel.cs" />
+    <Compile Include="Visualization\VisualizationModel.cs" />
+    <Compile Include="Visualization\Visualizer.cs" />
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
@@ -88,6 +96,12 @@
       <DependentUpon>Settings.settings</DependentUpon>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="libs\freeglut.dll" />
+    <Content Include="libs\Tao.FreeGlut.dll" />
+    <Content Include="libs\Tao.OpenGl.dll" />
+    <Content Include="libs\Tao.Platform.Windows.dll" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
